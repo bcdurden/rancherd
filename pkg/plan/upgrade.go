@@ -11,27 +11,29 @@ import (
 func Upgrade(cfg *config.Config, k8sVersion, rancherVersion, rancherOSVersion, dataDir string) (*applyinator.Plan, error) {
 	p := plan{}
 
-	if rancherVersion != "" {
-		if err := p.addInstruction(rancher.ToUpgradeInstruction("", cfg.SystemDefaultRegistry, k8sVersion, rancherVersion, dataDir)); err != nil {
-			return nil, err
+	if !cfg.DisableRancher {
+		if rancherVersion != "" {
+			if err := p.addInstruction(rancher.ToUpgradeInstruction("", cfg.SystemDefaultRegistry, k8sVersion, rancherVersion, dataDir)); err != nil {
+				return nil, err
+			}
+			if err := p.addInstruction(rancher.ToWaitRancherInstruction("", cfg.SystemDefaultRegistry, k8sVersion)); err != nil {
+				return nil, err
+			}
 		}
-		if err := p.addInstruction(rancher.ToWaitRancherInstruction("", cfg.SystemDefaultRegistry, k8sVersion)); err != nil {
-			return nil, err
-		}
-	}
 
-	if k8sVersion != "" {
-		if err := p.addInstruction(runtime.ToUpgradeInstruction(k8sVersion)); err != nil {
-			return nil, err
+		if k8sVersion != "" {
+			if err := p.addInstruction(runtime.ToUpgradeInstruction(k8sVersion)); err != nil {
+				return nil, err
+			}
+			if err := p.addInstruction(runtime.ToWaitKubernetesInstruction("", cfg.SystemDefaultRegistry, k8sVersion)); err != nil {
+				return nil, err
+			}
 		}
-		if err := p.addInstruction(runtime.ToWaitKubernetesInstruction("", cfg.SystemDefaultRegistry, k8sVersion)); err != nil {
-			return nil, err
-		}
-	}
 
-	if rancherOSVersion != "" {
-		if err := p.addInstruction(os.ToUpgradeInstruction(k8sVersion, rancherOSVersion)); err != nil {
-			return nil, err
+		if rancherOSVersion != "" {
+			if err := p.addInstruction(os.ToUpgradeInstruction(k8sVersion, rancherOSVersion)); err != nil {
+				return nil, err
+			}
 		}
 	}
 

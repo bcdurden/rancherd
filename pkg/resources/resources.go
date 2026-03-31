@@ -50,83 +50,88 @@ func ToBootstrapFile(config *config.Config, path string) (*applyinator.File, err
 	}
 
 	resources := config.Resources
-	return ToFile(append(resources, v1.GenericMap{
-		Data: map[string]interface{}{
-			"kind":       "Node",
-			"apiVersion": "v1",
-			"metadata": map[string]interface{}{
-				"name": nodeName,
-				"labels": map[string]interface{}{
-					"node-role.kubernetes.io/etcd": "true",
+
+	if !config.DisableRancher {
+		return ToFile(append(resources, v1.GenericMap{
+			Data: map[string]interface{}{
+				"kind":       "Node",
+				"apiVersion": "v1",
+				"metadata": map[string]interface{}{
+					"name": nodeName,
+					"labels": map[string]interface{}{
+						"node-role.kubernetes.io/etcd": "true",
+					},
 				},
 			},
-		},
-	}, v1.GenericMap{
-		Data: map[string]interface{}{
-			"kind":       "Namespace",
-			"apiVersion": "v1",
-			"metadata": map[string]interface{}{
-				"name": "fleet-local",
-			},
-		},
-	}, v1.GenericMap{
-		Data: map[string]interface{}{
-			"kind":       "Cluster",
-			"apiVersion": "provisioning.cattle.io/v1",
-			"metadata": map[string]interface{}{
-				"name":      "local",
-				"namespace": "fleet-local",
-				"labels": map[string]interface{}{
-					"provisioning.cattle.io/management-cluster-name": "local",
+		}, v1.GenericMap{
+			Data: map[string]interface{}{
+				"kind":       "Namespace",
+				"apiVersion": "v1",
+				"metadata": map[string]interface{}{
+					"name": "fleet-local",
 				},
 			},
-			"spec": map[string]interface{}{
-				"kubernetesVersion": k8sVersion,
-				// Rancher needs a non-null rkeConfig to apply system-upgrade-controller managed chart.
-				"rkeConfig": map[string]interface{}{},
+		}, v1.GenericMap{
+			Data: map[string]interface{}{
+				"kind":       "Cluster",
+				"apiVersion": "provisioning.cattle.io/v1",
+				"metadata": map[string]interface{}{
+					"name":      "local",
+					"namespace": "fleet-local",
+					"labels": map[string]interface{}{
+						"provisioning.cattle.io/management-cluster-name": "local",
+					},
+				},
+				"spec": map[string]interface{}{
+					"kubernetesVersion": k8sVersion,
+					// Rancher needs a non-null rkeConfig to apply system-upgrade-controller managed chart.
+					"rkeConfig": map[string]interface{}{},
+				},
 			},
-		},
-	}, v1.GenericMap{
-		Data: map[string]interface{}{
-			"kind":       "Secret",
-			"apiVersion": "v1",
-			"metadata": map[string]interface{}{
-				"name":      "local-rke-state",
-				"namespace": "fleet-local",
+		}, v1.GenericMap{
+			Data: map[string]interface{}{
+				"kind":       "Secret",
+				"apiVersion": "v1",
+				"metadata": map[string]interface{}{
+					"name":      "local-rke-state",
+					"namespace": "fleet-local",
+				},
+				"type": localRKEStateSecretType,
+				"data": map[string]interface{}{
+					"serverToken": []byte(token),
+					"agentToken":  []byte(token),
+				},
 			},
-			"type": localRKEStateSecretType,
-			"data": map[string]interface{}{
-				"serverToken": []byte(token),
-				"agentToken":  []byte(token),
+		}, v1.GenericMap{
+			Data: map[string]interface{}{
+				"kind":       "ClusterRegistrationToken",
+				"apiVersion": "management.cattle.io/v3",
+				"metadata": map[string]interface{}{
+					"name":      "default-token",
+					"namespace": "local",
+				},
+				"spec": map[string]interface{}{
+					"clusterName": "local",
+				},
+				"status": map[string]interface{}{
+					"token": token,
+				},
 			},
-		},
-	}, v1.GenericMap{
-		Data: map[string]interface{}{
-			"kind":       "ClusterRegistrationToken",
-			"apiVersion": "management.cattle.io/v3",
-			"metadata": map[string]interface{}{
-				"name":      "default-token",
-				"namespace": "local",
+		}, v1.GenericMap{
+			Data: map[string]interface{}{
+				"apiVersion": "catalog.cattle.io/v1",
+				"kind":       "ClusterRepo",
+				"metadata": map[string]interface{}{
+					"name": "rancher-stable",
+				},
+				"spec": map[string]interface{}{
+					"url": "https://releases.rancher.com/server-charts/stable",
+				},
 			},
-			"spec": map[string]interface{}{
-				"clusterName": "local",
-			},
-			"status": map[string]interface{}{
-				"token": token,
-			},
-		},
-	}, v1.GenericMap{
-		Data: map[string]interface{}{
-			"apiVersion": "catalog.cattle.io/v1",
-			"kind":       "ClusterRepo",
-			"metadata": map[string]interface{}{
-				"name": "rancher-stable",
-			},
-			"spec": map[string]interface{}{
-				"url": "https://releases.rancher.com/server-charts/stable",
-			},
-		},
-	}), path)
+		}), path)
+	} else {
+		return ToFile(resources, path)
+	}
 }
 
 func ToHarvesterClusterRepoFile(path string) (*applyinator.File, error) {

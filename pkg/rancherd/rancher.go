@@ -59,87 +59,92 @@ func (r *Rancherd) Info(ctx context.Context) error {
 
 func (r *Rancherd) Upgrade(ctx context.Context, upgradeConfig UpgradeConfig) error {
 	cfg, err := config.Load(r.cfg.ConfigPath)
-	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
-	}
 
-	rancherVersion, err := versions.RancherVersion(upgradeConfig.RancherVersion)
-	if err != nil {
-		return err
-	}
-
-	k8sVersion, err := versions.K8sVersion(upgradeConfig.KubernetesVersion)
-	if err != nil {
-		return err
-	}
-
-	rancherOSVersion, err := versions.RancherOSVersion(upgradeConfig.RancherOSVersion)
-	if err != nil {
-		return err
-	}
-
-	existingRancherVersion, existingK8sVersion, existingRancherOSVersion := r.getExistingVersions(ctx)
-	if existingRancherVersion == rancherVersion &&
-		existingK8sVersion == k8sVersion &&
-		(existingRancherOSVersion == "" || existingRancherOSVersion == rancherOSVersion) {
-		fmt.Printf("\nNothing to upgrade:\n\n")
-		fmt.Printf("    Rancher:    %s\n", rancherVersion)
-		if existingRancherOSVersion != "" {
-			fmt.Printf("    RancherOS:  %s\n", rancherOSVersion)
+	if !cfg.DisableRancher {
+		if err != nil {
+			return fmt.Errorf("loading config: %w", err)
 		}
-		fmt.Printf("    Kubernetes: %s\n\n", k8sVersion)
-		return nil
-	}
 
-	if existingRancherVersion == rancherVersion {
-		rancherVersion = ""
-	}
-	if existingK8sVersion == k8sVersion {
-		k8sVersion = ""
-	}
-	if existingRancherOSVersion == "" || existingRancherOSVersion == rancherOSVersion {
-		rancherOSVersion = ""
-	}
-
-	if k8sVersion != "" && existingK8sVersion != "" {
-		existingRuntime := config.GetRuntime(existingK8sVersion)
-		newRuntime := config.GetRuntime(k8sVersion)
-		if existingRuntime != newRuntime {
-			return fmt.Errorf("existing %s version %s is not compatible with %s version %s",
-				existingRuntime, existingK8sVersion, newRuntime, k8sVersion)
-		}
-	}
-
-	fmt.Printf("\nUpgrading to:\n\n")
-	if rancherVersion != "" {
-		fmt.Printf("    Rancher:    %s => %s\n", existingRancherVersion, rancherVersion)
-	}
-	if k8sVersion != "" {
-		fmt.Printf("    Kubernetes: %s => %s\n", existingK8sVersion, k8sVersion)
-	}
-	if rancherOSVersion != "" {
-		fmt.Printf("    RancherOS:  %s => %s\n", existingRancherOSVersion, rancherOSVersion)
-	}
-
-	if !r.cfg.Force {
-		go func() {
-			<-ctx.Done()
-			logrus.Fatalf("Aborting")
-		}()
-
-		fmt.Printf("\nPress any key to continue, or CTRL+C to cancel\n")
-		_, err := os.Stdin.Read(make([]byte, 1))
+		rancherVersion, err := versions.RancherVersion(upgradeConfig.RancherVersion)
 		if err != nil {
 			return err
 		}
+
+		k8sVersion, err := versions.K8sVersion(upgradeConfig.KubernetesVersion)
+		if err != nil {
+			return err
+		}
+
+		rancherOSVersion, err := versions.RancherOSVersion(upgradeConfig.RancherOSVersion)
+		if err != nil {
+			return err
+		}
+
+		existingRancherVersion, existingK8sVersion, existingRancherOSVersion := r.getExistingVersions(ctx)
+		if existingRancherVersion == rancherVersion &&
+			existingK8sVersion == k8sVersion &&
+			(existingRancherOSVersion == "" || existingRancherOSVersion == rancherOSVersion) {
+			fmt.Printf("\nNothing to upgrade:\n\n")
+			fmt.Printf("    Rancher:    %s\n", rancherVersion)
+			if existingRancherOSVersion != "" {
+				fmt.Printf("    RancherOS:  %s\n", rancherOSVersion)
+			}
+			fmt.Printf("    Kubernetes: %s\n\n", k8sVersion)
+			return nil
+		}
+
+		if existingRancherVersion == rancherVersion {
+			rancherVersion = ""
+		}
+		if existingK8sVersion == k8sVersion {
+			k8sVersion = ""
+		}
+		if existingRancherOSVersion == "" || existingRancherOSVersion == rancherOSVersion {
+			rancherOSVersion = ""
+		}
+
+		if k8sVersion != "" && existingK8sVersion != "" {
+			existingRuntime := config.GetRuntime(existingK8sVersion)
+			newRuntime := config.GetRuntime(k8sVersion)
+			if existingRuntime != newRuntime {
+				return fmt.Errorf("existing %s version %s is not compatible with %s version %s",
+					existingRuntime, existingK8sVersion, newRuntime, k8sVersion)
+			}
+		}
+
+		fmt.Printf("\nUpgrading to:\n\n")
+		if rancherVersion != "" {
+			fmt.Printf("    Rancher:    %s => %s\n", existingRancherVersion, rancherVersion)
+		}
+		if k8sVersion != "" {
+			fmt.Printf("    Kubernetes: %s => %s\n", existingK8sVersion, k8sVersion)
+		}
+		if rancherOSVersion != "" {
+			fmt.Printf("    RancherOS:  %s => %s\n", existingRancherOSVersion, rancherOSVersion)
+		}
+
+		if !r.cfg.Force {
+			go func() {
+				<-ctx.Done()
+				logrus.Fatalf("Aborting")
+			}()
+
+			fmt.Printf("\nPress any key to continue, or CTRL+C to cancel\n")
+			_, err := os.Stdin.Read(make([]byte, 1))
+			if err != nil {
+				return err
+			}
+		}
+
+		nodePlan, err := plan.Upgrade(&cfg, k8sVersion, rancherVersion, rancherOSVersion, DefaultDataDir)
+		if err != nil {
+			return err
+		}
+
+		return plan.RunWithKubernetesVersion(ctx, k8sVersion, nodePlan, DefaultDataDir)
 	}
 
-	nodePlan, err := plan.Upgrade(&cfg, k8sVersion, rancherVersion, rancherOSVersion, DefaultDataDir)
-	if err != nil {
-		return err
-	}
-
-	return plan.RunWithKubernetesVersion(ctx, k8sVersion, nodePlan, DefaultDataDir)
+	return nil
 }
 
 func (r *Rancherd) execute(ctx context.Context) error {
